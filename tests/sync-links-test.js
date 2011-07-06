@@ -9,6 +9,9 @@ var fakeweb = require(__dirname + '/fakeweb.js');
 var mongoCollections;
 var svcId = 'links';
 
+var lconfig = require('lconfig');
+lconfig.load('config.json');
+
 var request = require('request');
 
 var RESTeasy = require('api-easy');
@@ -77,7 +80,7 @@ suite.next().suite.addBatch({
     "Can pull in the links from facebook" : {
         topic : function() {
             fakeweb.registerUri({
-                uri: 'http://localhost:8043/Me/facebook/getCurrent/wall',
+                uri: lconfig.lockerBase + '/Me/facebook/getCurrent/wall',
                 file: __dirname + '/fixtures/links/facebook_wall.json' });
             var self = this;
             links.getLinks("facebook", "wall", "facebook", function() {
@@ -106,7 +109,7 @@ suite.next().suite.addBatch({
     "Can successfully merge a link from twitter + facebook" : {
         topic : function() {
             fakeweb.registerUri({
-                uri: 'http://localhost:8043/Me/facebook/getCurrent/newsfeed',
+                uri: lconfig.lockerBase + '/Me/facebook/getCurrent/newsfeed',
                 file: __dirname + '/fixtures/links/facebook_newsfeed.json' });
             var self = this;
             // TODO: this should be using the query language when that's implemented.  Nothing should ever really
@@ -141,7 +144,7 @@ suite.next().suite.addBatch({
     "Facebook ADD event" : {
         topic: function() {
             dataStore.clear();
-            dataStore.addEvent({data: JSON.parse(facebookEvent1)}, this.callback);},
+            dataStore.addEvent(JSON.parse(facebookEvent1), this.callback);},
         "is handled properly" : function(err, object) {
             assert.equal(object.sourceObjects[0].svcID, 'facebook');
             assert.equal(object.url, 'http://singly.com/');
@@ -150,7 +153,7 @@ suite.next().suite.addBatch({
 }).addBatch({
     "Twitter ADD event" : {
         topic: function() {
-            dataStore.addEvent({data: JSON.parse(twitterEvent1)}, this.callback);},
+            dataStore.addEvent(JSON.parse(twitterEvent1), this.callback);},
         "is handled properly" : function(err, object) {
             assert.equal(object.sourceObjects[0].svcID, 'twitter');
             assert.equal(object.url, 'http://bit.ly/jBrrAe');

@@ -175,39 +175,66 @@ locker.post('/core/:svcId/install', function(req, res) {
     res.end(JSON.stringify(metaData));
 });
 
+locker.post('/core/:svcId/uninstall', function(req, res) {
+    console.log('/core/:svcId/uninstal, :svcId == ' + req.params.svcId);
+    var svcId = req.body.serviceId;
+    if(!serviceManager.isInstalled(svcId)) {
+        res.writeHead(404);
+        res.end(svcId+" doesn't exist, but does anything really? ");
+        return;
+    }
+    serviceManager.uninstall(svcId, function() {
+        res.writeHead(200);
+        res.end("OKTHXBI");
+    });
+})
+
+locker.post('/core/:svcId/disable', function(req, res) {
+    var svcId = req.body.serviceId;
+    if(!serviceManager.isInstalled(svcId)) {
+        res.writeHead(404);
+        res.end(svcId+" doesn't exist, but does anything really? ");
+        return;
+    }
+    serviceManager.disable(svcId);
+    res.writeHead(200);
+    res.end("OKTHXBI");
+})
+
+locker.post('/core/:svcId/enable', function(req, res) {
+    var svcId = req.body.serviceId;
+    if(!serviceManager.isDisabled(svcId)) {
+        res.writeHead(404);
+        res.end(svcId+" isn't disabled");
+        return;
+    }
+    serviceManager.enable(svcId);
+    res.writeHead(200);
+    res.end("OKTHXBI");
+})
+
 
 // ME PROXY
 // all of the requests to something installed (proxy them, moar future-safe)
 locker.get('/Me/*', function(req,res){
-    var slashIndex = req.url.indexOf("/", 4);
-    if (slashIndex < 0) slashIndex = req.url.length;
-    var id = req.url.substring(4, slashIndex);
-    var ppath = req.url.substring(slashIndex);
-    if(!serviceManager.isInstalled(id)) { // make sure it exists before it can be opened
-        res.writeHead(404);
-        res.end("so sad, couldn't find "+id);
-        return;
-    }
-    if (!serviceManager.isRunning(id)) {
-        console.log("Having to spawn " + id);
-        var buffer = proxy.buffer(req);
-        serviceManager.spawn(id,function(){
-            proxied('GET', serviceManager.metaInfo(id),ppath,req,res,buffer);
-        });
-    } else {
-        proxied('GET', serviceManager.metaInfo(id),ppath,req,res);
-    }
-    console.log("Proxy complete");
+    proxyRequest('GET', req, res);
 });
 
 // all of the requests to something installed (proxy them, moar future-safe)
 locker.post('/Me/*', function(req,res){
+    proxyRequest('POST', req, res);
+});
+
+function proxyRequest(method, req, res) {
     var slashIndex = req.url.indexOf("/", 4);
     if (slashIndex < 0) slashIndex = req.url.length;
     var id = req.url.substring(4, slashIndex);
     var ppath = req.url.substring(slashIndex);
-    sys.debug("Proxying a post to " + ppath + " to service " + req.url);
-    console.log("Proxying a post to " + ppath + " to service " + req.url);
+    if(serviceManager.isDisabled(id)) {
+        res.writeHead(503);
+        res.end('This service has been disabled.');
+        return;
+    }
     if(!serviceManager.isInstalled(id)) { // make sure it exists before it can be opened
         res.writeHead(404);
         res.end("so sad, couldn't find "+id);
@@ -217,14 +244,13 @@ locker.post('/Me/*', function(req,res){
         console.log("Having to spawn " + id);
         var buffer = proxy.buffer(req);
         serviceManager.spawn(id,function(){
-            proxied('POST', serviceManager.metaInfo(id),ppath,req,res,buffer);
+            proxied(method, serviceManager.metaInfo(id),ppath,req,res,buffer);
         });
     } else {
-        proxied('POST', serviceManager.metaInfo(id),ppath,req,res);
+        proxied(method, serviceManager.metaInfo(id),ppath,req,res);
     }
     console.log("Proxy complete");
-});
-
+};
 
 // DIARY
 // Publish a user visible message

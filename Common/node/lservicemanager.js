@@ -14,9 +14,11 @@ var crypto = require("crypto");
 var util = require("util");
 var spawn = require('child_process').spawn;
 var levents = require('levents');
+var wrench = require('wrench');
 
 var serviceMap = {
     available:[],
+    disabled:[],
     installed:{}
 };
 
@@ -65,25 +67,23 @@ function mapMetaData(file, type, installable) {
     metaData.srcdir = path.dirname(file);
     metaData.is = type;
     metaData.installable = installable;
-    if (lconfig.displayUnstable || metaData.status === 'stable') {
-        metaData.externalUri = lconfig.externalBase+"/Me/"+metaData.id+"/";
-        serviceMap.available.push(metaData);
-        if (type === "collection") {
-            if(!metaData.handle) {
-                console.error("missing handle for "+file);
-                return;
-            }
-            fs.stat(lconfig.lockerDir+"/" + lconfig.me + "/"+metaData.handle,function(err,stat){
-                if(err || !stat) {
-                    metaData.id=metaData.handle;
-                    metaData.uri = lconfig.lockerBase+"/Me/"+metaData.id+"/";
-                    metaData.externalUri = lconfig.externalBase+"/Me/"+metaData.id+"/";
-                    serviceMap.installed[metaData.id] = metaData;
-                    fs.mkdirSync(lconfig.lockerDir + "/" + lconfig.me + "/"+metaData.id,0755);
-                    fs.writeFileSync(lconfig.lockerDir + "/" + lconfig.me + "/"+metaData.id+'/me.json',JSON.stringify(metaData, null, 4));
-                }
-            });
+    metaData.externalUri = lconfig.externalBase+"/Me/"+metaData.id+"/";
+    serviceMap.available.push(metaData);
+    if (type === "collection") {
+        if(!metaData.handle) {
+            console.error("missing handle for "+file);
+            return;
         }
+        fs.stat(lconfig.lockerDir+"/" + lconfig.me + "/"+metaData.handle,function(err,stat){
+            if(err || !stat) {
+                metaData.id=metaData.handle;
+                metaData.uri = lconfig.lockerBase+"/Me/"+metaData.id+"/";
+                metaData.externalUri = lconfig.externalBase+"/Me/"+metaData.id+"/";
+                serviceMap.installed[metaData.id] = metaData;
+                fs.mkdirSync(lconfig.lockerDir + "/" + lconfig.me + "/"+metaData.id,0755);
+                fs.writeFileSync(lconfig.lockerDir + "/" + lconfig.me + "/"+metaData.id+'/me.json',JSON.stringify(metaData, null, 4));
+            }
+        });
     }
 
     return metaData;
@@ -138,6 +138,9 @@ exports.findInstalled = function () {
             addEvents(js);
             console.log("Loaded " + js.id);
             serviceMap.installed[js.id] = js;
+            if (js.disabled) {
+                serviceMap.disabled.push(js.id);
+            }
         } catch (E) {
 //            console.log("Me/"+dirs[i]+" does not appear to be a service (" +E+ ")");
         }
@@ -374,7 +377,9 @@ exports.spawn = function(serviceId, callback) {
         delete svc.port;
         delete svc.uriLocal;
         // save out all updated meta fields (pretty print!)
-        fs.writeFileSync(lconfig.lockerDir + "/" + lconfig.me + "/" + id + '/me.json', JSON.stringify(svc, null, 4));
+        if (!svc.uninstalled) {
+            fs.writeFileSync(lconfig.lockerDir + "/" + lconfig.me + "/" + id + '/me.json', JSON.stringify(svc, null, 4));
+        }
         checkForShutdown();
     });
     console.log("sending "+svc.id+" startup info of "+JSON.stringify(processInformation));
@@ -391,7 +396,18 @@ exports.metaInfo = function(serviceId) {
 }
 
 exports.isInstalled = function(serviceId) {
+    if (serviceMap.disabled.indexOf(serviceId) > -1) {
+        return false;
+    }
     return serviceId in serviceMap.installed;
+}
+
+exports.isAvailable = function(serviceId) {
+    return serviceId in serviceMap.available;
+}
+
+exports.isDisabled = function(serviceId) {
+    return (serviceMap.disabled.indexOf(serviceId) > -1);
 }
 
 /**
@@ -413,6 +429,68 @@ exports.shutdown = function(cb) {
     }
     checkForShutdown();
 }
+
+exports.disable = function(id) {
+    if(!id)
+        return;
+    serviceMap.disabled.push(id);
+    var svc = serviceMap.installed[id];
+    if(!svc)
+        return;
+    svc.disabled = true;
+    if (svc) {
+        if (svc.pid) {
+            try {
+                console.log("Killing running service " + svc.id + " at pid " + svc.pid);
+                process.kill(svc.pid, "SIGINT");
+            } catch (e) {}
+        }
+    }
+    // save out all updated meta fields (pretty print!)
+    fs.writeFileSync(lconfig.lockerDir + "/" + lconfig.me + "/" + id + '/me.json', JSON.stringify(svc, null, 4));
+}
+
+exports.uninstall = function(serviceId, callback) {
+    var svc = serviceMap.installed[serviceId];
+    var lmongoclient = require('lmongoclient')(lconfig.mongo.host, lconfig.mongo.port, svc.id, svc.mongoCollections);
+    lmongoclient.connect(function(mongo) {
+        var keys = Object.getOwnPropertyNames(mongo.collections);
+        (function deleteCollection (keys, callback) {
+            if (keys.length > 0) {
+                key = keys.splice(0, 1);
+                coll = mongo.collections[key];
+                coll.drop(function() {deleteCollection(keys, callback);});
+            } else {
+                callback();
+            }
+        })(keys, function() {
+            svc.uninstalled = true;
+            if (svc.pid) {
+                process.kill(svc.pid, "SIGINT");
+            }
+            wrench.rmdirSyncRecursive(lconfig.me + "/" + serviceId);
+            delete serviceMap.installed[serviceId];
+            callback();
+        });
+    })
+};
+
+exports.enable = function(id) {
+    if(!id)
+        return;
+    serviceMap.disabled.splice(serviceMap.disabled.indexOf(id), 1);
+    var svc;
+    for(var i in serviceMap.installed) {
+        if(serviceMap.installed[i].id === id) {
+            svc = serviceMap.installed[i];
+            delete svc.disabled;
+        }
+    }
+    if(!svc)
+        return;
+    // save out all updated meta fields (pretty print!)
+    fs.writeFileSync(lconfig.lockerDir + "/" + lconfig.me + "/" + id + '/me.json', JSON.stringify(svc, null, 4));
+};
 
 /**
 * Return whether the service is running

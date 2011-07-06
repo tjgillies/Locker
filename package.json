@@ -7,7 +7,7 @@
         "lib": "./Common/node"
     },
     "engines": {
-        "node": ">= 0.4.6  <=0.4.8"
+        "node": ">= 0.4.6  <=0.4.9"
     },
     "dependencies": {
         "connect": "=1.1.4",
@@ -31,7 +31,7 @@
         "vows": "=0.5.8",
         "wrench": "=1.1.0",
         "eyes": "=0.1.6",
-        "knox": "=0.0.7",
+        "knox": "=0.0.8",
         "mongodb": "=0.9.6"
     }
 }

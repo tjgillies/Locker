@@ -58,6 +58,9 @@
       <section id="servicesSection" class="tabPage">
         <header>
           <h1>Services</h1>
+          <ul class="actions">
+            <li onclick="javascript:unstableServices()">[show unstable]</li>
+          </ul>
         </header>
         <section class="content">
           <ul id="servicesList">
@@ -84,11 +87,6 @@
             <section id="connectorInstancesSection">
               <ul id="connectorInstancesList">
               </ul>
-              <footer>
-                <ul>
-                  <li id="addConnectorInstanceButton"><a href='javascript:installService(-1)'><img src="dashboard-static/img/Plus.png" /></a></li>
-                </ul>
-              </footer>
             </section>
           </div>
         </section>
